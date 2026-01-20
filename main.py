@@ -1,5 +1,6 @@
 from views.intro_view import show_intro
 from views.game_view import show_game
+from views.result_view import show_result
 import streamlit as st
 import os
 from dotenv import load_dotenv
@@ -30,22 +31,8 @@ if "game_logs" not in st.session_state:
     st.session_state["game_logs"] = [] # 대화 로그 임시 저장
 
 # ---------------------------------------------------------
-# 3. 화면 라우팅 (View 함수 임시 정의)
-# 실제로는 views/ 폴더에서 import 해서 써야 깔끔합니다.
+# 3. 메인 실행 로직
 # ---------------------------------------------------------
-
-def show_result():
-    st.title("📊 분석 결과")
-    st.success("데이터가 성공적으로 분석되었습니다!")
-    st.json({
-        "nickname": st.session_state["nickname"],
-        "love_style": "츤데레 전략가",
-        "match_score": 98
-    })
-    
-    if st.button("다시 하기"):
-        st.session_state.clear() # 상태 초기화
-        st.rerun()
 
 # ---------------------------------------------------------
 # 4. 메인 실행 로직
