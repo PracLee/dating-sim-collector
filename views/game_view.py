@@ -4,6 +4,9 @@ from services.llm_service import get_ai_response
 from services.db_service import save_chat_log
 from config.prompts import get_system_prompt, get_persona_name, get_first_greeting
 
+# 한 사람당 최대 대화 횟수
+MAX_TURNS = 10
+
 def show_game():
     st.title(f"{st.session_state.get('nickname', '익명')}님의 소개팅 💕")
     
@@ -48,8 +51,19 @@ def show_game():
         st.session_state["affection_scores"] = {1: 50, 2: 50, 3: 50}
 
     # 2. UI 표시
-    # 현재 상대방 정보만 간단하게 표시
-    st.subheader(f"� {persona_name}님과 대화 중")
+    # 현재 상대방 정보 + 남은 대화 횟수
+    turn_count = len([m for m in st.session_state["messages"] if m["role"] == "user"])
+    remaining = MAX_TURNS - turn_count
+    
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        st.subheader(f"💬 {persona_name}님과 대화 중")
+    with col2:
+        st.metric(label="남은 대화", value=f"{remaining}회")
+    
+    # 대화 시간 제한 안내
+    if remaining <= 3 and remaining > 0:
+        st.warning(f"⏰ {persona_name}님과의 대화가 {remaining}회 남았습니다!")
 
     # 채팅 기록 표시
     for msg in st.session_state["messages"]:
@@ -57,18 +71,14 @@ def show_game():
             with st.chat_message(msg["role"]):
                 st.write(msg["content"])
 
-    # 3. 사용자 입력 처리
-    if prompt := st.chat_input("메시지를 입력하세요..."):
-        # 사용자 메시지 UI 표시 및 저장
-        st.session_state["messages"].append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
-            st.write(prompt)
-
-# AI 응답 생성
+    # 대기 중인 메시지 처리 (AI 응답 생성)
+    if st.session_state.get("pending_message"):
+        # AI 응답 생성
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
-            with st.spinner("상대방이 입력 중입니다..."):
-                result = get_ai_response(st.session_state["messages"])
+            message_placeholder.markdown("입력 중... ▌")
+            
+            result = get_ai_response(st.session_state["messages"])
                 
             ai_text = result.get("response", "...")
             
@@ -101,6 +111,9 @@ def show_game():
         # AI 메시지 저장
         st.session_state["messages"].append({"role": "assistant", "content": full_response})
         
+        # pending 상태 해제 (AI 응답 완료)
+        st.session_state["pending_message"] = None
+        
         # 게임 오버 체크
         if new_score <= 0:
             st.error(f"💔 {persona_name}님이 실망하여 자리를 떠났습니다...")
@@ -115,6 +128,52 @@ def show_game():
             st.session_state["fail_reason"] = f"{persona_name} 호감도 부족"
             st.session_state["step"] = "result" # 결과 화면(실패)으로 이동
             st.rerun()
+        
+        # 대화 횟수 제한 체크 (10회 달성 시 자동 종료)
+        current_turns = len([m for m in st.session_state["messages"] if m["role"] == "user"])
+        if current_turns >= MAX_TURNS:
+            st.info(f"⏰ {persona_name}님과의 소개팅 시간이 종료되었습니다!")
+            time.sleep(2)
+            
+            # 채팅 로그 DB 저장
+            session_id = st.session_state.get("session_id")
+            if session_id:
+                save_chat_log(session_id, current_type, st.session_state["messages"], current_turns)
+            
+            # 히스토리 저장
+            if "history" not in st.session_state:
+                st.session_state["history"] = []
+            st.session_state["history"].append({
+                "round": current_round,
+                "persona": current_type,
+                "messages": st.session_state["messages"],
+                "final_score": st.session_state["affection_scores"][current_round]
+            })
+            
+            # 다음 라운드로 이동
+            if current_round < 3:
+                st.session_state["current_round"] += 1
+                next_round = st.session_state["current_round"]
+                next_type = ROUND_TYPES[next_round]
+                next_name = get_persona_name(next_type, user_gender)
+                
+                new_sys_prompt = get_system_prompt(next_type, user_gender, user_nickname)
+                new_greeting = get_first_greeting(next_type, user_gender)
+                st.session_state["messages"] = [
+                    {"role": "system", "content": new_sys_prompt},
+                    {"role": "assistant", "content": new_greeting}
+                ]
+                st.toast(f"{next_name}님과의 대화가 시작됩니다!")
+                time.sleep(1)
+                st.rerun()
+            else:
+                st.success("모든 소개팅이 종료되었습니다! 결과를 분석합니다.")
+                time.sleep(1)
+                st.session_state["step"] = "result"
+                st.rerun()
+        
+        # AI 응답 완료 후 화면 새로고침 (입력창 다시 활성화)
+        st.rerun()
 
     # 4. 라운드 종료 / 넘기기 (임시 버튼)
     st.divider()
@@ -164,3 +223,23 @@ def show_game():
             time.sleep(1)
             st.session_state["step"] = "result"
             st.rerun()
+
+    # 5. 사용자 입력 처리
+    prompt = st.chat_input("메시지를 입력하세요...")
+    
+    if prompt:
+        # 마지막 메시지가 user인지 확인 (연속 user 입력 방지)
+        messages = st.session_state.get("messages", [])
+        last_message_is_user = False
+        for msg in reversed(messages):
+            if msg["role"] != "system":
+                last_message_is_user = (msg["role"] == "user")
+                break
+        
+        # 마지막이 assistant 메시지일 때만 새 입력 허용
+        if not last_message_is_user and not st.session_state.get("pending_message"):
+            st.session_state["messages"].append({"role": "user", "content": prompt})
+            st.session_state["pending_message"] = prompt
+            st.rerun()
+        # 그 외의 경우는 조용히 무시 (화면에도 안 나옴)
+

@@ -16,7 +16,7 @@ def show_intro():
     # 2. 입력 폼
     col1, col2 = st.columns([3, 1]) # 디자인을 위해 칸 나누기
     with col1:
-        nickname = st.text_input("닉네임을 입력해주세요 (익명 보장)", placeholder="예: 얼굴빼고 차은우, 얼굴없는 윈터")
+        nickname = st.text_input("닉네임을 입력해주세요 (익명 보장)", placeholder="예: 얼굴빼고 차은우, 카리나인데 안이쁨")
     
     gender_kor = st.radio("성별을 선택해주세요", ["남성", "여성"], horizontal=True)
     gender = "M" if gender_kor == "남성" else "F"
