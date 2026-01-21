@@ -2,7 +2,7 @@
 import streamlit as st
 import time
 from services.llm_service import analyze_conversation
-from services.db_service import update_game_session
+from services.db_service import update_game_session, save_analysis_result
 from config.prompts import get_persona_name
 
 def show_result():
@@ -247,12 +247,15 @@ def show_result():
     if "db_saved" not in st.session_state:
         session_id = st.session_state.get("session_id")
         if session_id:
+            # 세션 업데이트
             update_game_session(
                 session_id=session_id,
                 final_choice=final_choice,
                 my_persona=my_persona,
                 ideal_preference=compatibility
             )
+            # 분석 결과 저장
+            save_analysis_result(session_id, analysis)
             st.session_state["db_saved"] = True
     
     st.success("🎉 분석 결과가 저장되었습니다. 참여해주셔서 감사합니다!")

@@ -115,3 +115,58 @@ def save_chat_log(session_id, partner_type, chat_history, turn_count):
     except Exception as e:
         st.error(f"채팅 로그 저장 실패: {e}")
         return None
+
+
+def save_analysis_result(session_id, analysis):
+    """
+    LLM 대화 분석 결과를 analysis_results 테이블에 저장합니다.
+    
+    Args:
+        session_id: 게임 세션 ID
+        analysis: LLM 분석 결과 dict (my_persona, compatibility, insights, summary)
+    
+    Returns:
+        analysis_id: 저장된 분석 결과 ID (실패 시 None)
+    """
+    try:
+        my_persona = analysis.get("my_persona", {})
+        compatibility = analysis.get("compatibility", {})
+        insights = analysis.get("insights", {})
+        
+        analysis_data = {
+            "session_id": session_id,
+            
+            # 사용자 연애 스타일
+            "style": my_persona.get("style"),
+            "user_type": my_persona.get("type"),
+            "keywords": my_persona.get("keywords", []),
+            "strength": my_persona.get("strength"),
+            "weakness": my_persona.get("weakness"),
+            
+            # 호환성 분석
+            "best_match": compatibility.get("best_match"),
+            "best_reason": compatibility.get("best_reason"),
+            "similar_style": compatibility.get("similar_style"),
+            "similar_chemistry": compatibility.get("similar_chemistry"),
+            "opposite_style": compatibility.get("opposite_style"),
+            "opposite_chemistry": compatibility.get("opposite_chemistry"),
+            
+            # 인사이트
+            "positive": insights.get("positive"),
+            "improvement": insights.get("improvement"),
+            "dating_tip": insights.get("dating_tip"),
+            "warning": insights.get("warning"),
+            
+            # 전체 요약
+            "summary": analysis.get("summary")
+        }
+        
+        response = supabase.table("analysis_results").insert(analysis_data).execute()
+        
+        if response.data:
+            return response.data[0]['analysis_id']
+        return None
+
+    except Exception as e:
+        st.error(f"분석 결과 저장 실패: {e}")
+        return None
