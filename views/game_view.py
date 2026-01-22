@@ -1,7 +1,7 @@
 import streamlit as st
 import time
 from services.llm_service import get_ai_response
-from services.db_service import save_chat_log
+from services.db_service import save_chat_log, save_affinity_log
 from config.prompts import get_system_prompt, get_persona_name, get_first_greeting
 
 # 한 사람당 최대 대화 횟수
@@ -93,6 +93,30 @@ def show_game():
             prev_score = st.session_state["affection_scores"][current_round]
             new_score = max(0, min(100, prev_score + score_delta))
             st.session_state["affection_scores"][current_round] = new_score
+            
+            # === 호감도 변경 로그 DB 저장 ===
+            session_id = st.session_state.get("session_id")
+            if session_id:
+                # 현재 턴 번호 계산
+                turn_index = len([m for m in st.session_state["messages"] if m["role"] == "user"])
+                
+                # 사용자의 마지막 메시지 가져오기 (호감도 변화를 유발한 메시지)
+                user_messages = [m for m in st.session_state["messages"] if m["role"] == "user"]
+                trigger_message = user_messages[-1]["content"] if user_messages else None
+                
+                # LLM이 reason을 반환했다면 사용, 없으면 None
+                reason = result.get("reason", None)
+                
+                save_affinity_log(
+                    session_id=session_id,
+                    partner_type=current_type,
+                    turn_index=turn_index,
+                    score_change=score_delta,
+                    current_score=new_score,
+                    reason=reason,
+                    trigger_message=trigger_message
+                )
+            # ================================
             
             # 점수 변화 알림
             if score_delta > 0:

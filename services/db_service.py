@@ -170,3 +170,41 @@ def save_analysis_result(session_id, analysis):
     except Exception as e:
         st.error(f"분석 결과 저장 실패: {e}")
         return None
+
+
+def save_affinity_log(session_id, partner_type, turn_index, score_change, current_score, reason=None, trigger_message=None):
+    """
+    호감도 변경 로그를 affinity_logs 테이블에 저장합니다.
+    
+    Args:
+        session_id: 게임 세션 ID
+        partner_type: 대화 상대 타입 ('EMOTIONAL', 'LOGICAL', 'TOUGH')
+        turn_index: 현재 대화 턴 번호 (1, 2, 3...)
+        score_change: 이번 턴의 호감도 변화량 (예: +10, -5)
+        current_score: 변화 후 누적 점수 (0~100)
+        reason: 점수 변경 사유 (선택)
+        trigger_message: 호감도 변화를 유발한 사용자 메시지 (선택)
+    
+    Returns:
+        log_id: 저장된 로그 ID (실패 시 None)
+    """
+    try:
+        log_data = {
+            "session_id": session_id,
+            "partner_type": partner_type,
+            "turn_index": turn_index,
+            "score_change": score_change,
+            "current_score": current_score,
+            "reason": reason,
+            "trigger_message": trigger_message
+        }
+        
+        response = supabase.table("affinity_logs").insert(log_data).execute()
+        
+        if response.data:
+            return response.data[0]['log_id']
+        return None
+
+    except Exception as e:
+        st.error(f"호감도 로그 저장 실패: {e}")
+        return None
