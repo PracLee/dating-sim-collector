@@ -30,6 +30,110 @@ def get_initialized_rag_service():
 rag_service = get_initialized_rag_service()
 
 
+def sanitize_user_input(text):
+    """
+    프롬프트 인젝션 공격을 방어하기 위해 사용자 입력을 필터링합니다.
+    
+    Args:
+        text: 사용자 입력 텍스트
+        
+    Returns:
+        tuple: (is_safe: bool, cleaned_text: str, warning: str)
+    """
+    if not text:
+        return True, text, ""
+    
+    # 1. 특수 토큰 패턴 감지
+    dangerous_tokens = [
+        "<|begin_of_text|>",
+        "<|end_of_text|>",
+        "<|start_header_id|>",
+        "<|end_header_id|>",
+        "<|eot_id|>",
+        "[INST]",
+        "[/INST]",
+        "<<SYS>>",
+        "<</SYS>>",
+        "<s>",
+        "</s>",
+    ]
+    
+    # 2. 시스템 명령어 패턴 감지
+    system_keywords = [
+        "ignore previous",
+        "ignore all previous",
+        "disregard previous",
+        "forget previous",
+        "new instructions",
+        "system prompt",
+        "you are now",
+        "pretend you are",
+        "act as",
+        "roleplay as",
+        "너는 이제",
+        "시스템 프롬프트",
+        "이전 지시",
+        "무시하고",
+    ]
+    
+    # 3. JSON 인젝션 패턴 감지
+    json_attack_keywords = [
+        "\"request\":",
+        "\"system\":",
+        "\"instruction\":",
+        "\"instructions\":",
+        "\"response\":",
+        "\"score\":",
+        "\"reason\":",
+        '"request":',
+        '"system":',
+        '"instruction":',
+        '"response":',
+    ]
+    
+    text_lower = text.lower()
+    
+    # 특수 토큰 감지
+    for token in dangerous_tokens:
+        if token.lower() in text_lower:
+            return False, "", f"⚠️ 특수 토큰이 감지되었습니다: {token}"
+    
+    # 시스템 명령어 감지
+    for keyword in system_keywords:
+        if keyword in text_lower:
+            return False, "", f"⚠️ 허용되지 않는 명령어가 감지되었습니다: {keyword}"
+    
+    # JSON 인젝션 패턴 감지
+    for keyword in json_attack_keywords:
+        if keyword.lower() in text_lower:
+            return False, "", f"⚠️ JSON 인젝션 시도가 감지되었습니다"
+    
+    # JSON 구조 의심 패턴 (중괄호 과다 사용)
+    import re
+    brace_count = text.count('{') + text.count('}')
+    if brace_count >= 4:  # { } 가 각각 2개 이상
+        # JSON 파싱 시도
+        try:
+            import json
+            parsed = json.loads(text)
+            # 파싱 성공 + 의심스러운 키가 있으면 차단
+            suspicious_keys = ['request', 'system', 'instruction', 'response', 'score', 'reason']
+            if any(key in str(parsed).lower() for key in suspicious_keys):
+                return False, "", "⚠️ JSON 구조 인젝션이 감지되었습니다"
+        except:
+            # JSON 파싱 실패는 괜찮음 (일반 중괄호 사용)
+            pass
+    
+    # 4. 과도하게 긴 입력 차단 (일반적인 대화는 500자 이내)
+    if len(text) > 1000:
+        return False, "", "⚠️ 메시지가 너무 깁니다. (최대 1000자)"
+    
+    # 5. 연속된 특수문자 제거 (예: <<<, >>>)
+    cleaned = re.sub(r'([<>|{}[\]])\1{2,}', r'\1', text)
+    
+    return True, cleaned, ""
+
+
 def get_ai_response(messages):
     """
     OpenAI API를 통해 챗봇 응답을 받아옵니다.
@@ -38,6 +142,30 @@ def get_ai_response(messages):
     """
     if not client:
         return {"response": "🚨 API Key가 설정되지 않았습니다.", "score": 0}
+
+    # 프롬프트 인젝션 방어: 마지막 사용자 메시지 검증
+    last_user_msg = ""
+    last_user_index = -1
+    for i, msg in enumerate(reversed(messages)):
+        if msg["role"] == "user":
+            last_user_msg = msg["content"]
+            last_user_index = len(messages) - 1 - i
+            break
+    
+    if last_user_msg:
+        is_safe, cleaned_msg, warning = sanitize_user_input(last_user_msg)
+        if not is_safe:
+            # 위험한 입력 감지 시 안전한 응답 반환 (LLM 호출 안함)
+            return {
+                "response": "죄송하지만 기술적인 공격이네요. 안통한다 애송이!",
+                "score": -100,
+                "reason": "기술적인 공격"
+            }
+        
+        # 입력이 정제되었다면 메시지 교체
+        if cleaned_msg != last_user_msg:
+            messages = list(messages)  # 복사
+            messages[last_user_index] = {"role": "user", "content": cleaned_msg}
 
     # [RAG Integration]
     # 원본 messages를 변경하지 않기 위해 복사
