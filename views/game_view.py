@@ -111,6 +111,16 @@ def show_game():
     if remaining <= 3 and remaining > 0:
         st.warning(f"⏰ {persona_name}님과의 대화가 {remaining}회 남았습니다!")
 
+    # 채팅 영역 상단 여백 추가 (floating 헤더와 겹침 방지)
+    st.markdown("""
+    <style>
+    /* 첫 번째 채팅 메시지에 상단 여백 추가 */
+    .stChatMessage:first-of-type {
+        margin-top: 20px !important;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
     # 채팅 기록 표시
     for msg in st.session_state["messages"]:
         if msg["role"] != "system":
@@ -119,6 +129,8 @@ def show_game():
 
     # 대기 중인 메시지 처리 (AI 응답 생성)
     if st.session_state.get("pending_message"):
+        full_response = ""  # 변수를 미리 선언 (with 블록 밖에서 접근 가능하도록)
+        
         # AI 응답 생성
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
@@ -193,7 +205,7 @@ def show_game():
             if session_id:
                 turn_count = len([m for m in st.session_state["messages"] if m["role"] == "user"])
                 save_chat_log(session_id, current_type, st.session_state["messages"], turn_count)
-            
+        
             time.sleep(3)
             st.session_state["fail_reason"] = f"{persona_name} 호감도 부족"
             st.session_state["step"] = "result" # 결과 화면(실패)으로 이동
@@ -242,8 +254,7 @@ def show_game():
                 st.session_state["step"] = "result"
                 st.rerun()
         
-        # AI 응답 완료 후 화면 새로고침 (입력창 다시 활성화)
-        st.rerun()
+        # AI 응답 완료 - st.chat_input이 자동으로 재실행하므로 rerun() 불필요
 
     # 4. 라운드 종료 / 넘기기 (임시 버튼)
     st.divider()
@@ -310,6 +321,6 @@ def show_game():
         if not last_message_is_user and not st.session_state.get("pending_message"):
             st.session_state["messages"].append({"role": "user", "content": prompt})
             st.session_state["pending_message"] = prompt
-            st.rerun()
+            # st.rerun() 제거 - st.chat_input이 자동으로 재실행함
         # 그 외의 경우는 조용히 무시 (화면에도 안 나옴)
 
